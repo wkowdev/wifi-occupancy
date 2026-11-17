@@ -5,8 +5,7 @@ import subprocess
 from pathlib import Path
 from tempfile import TemporaryFile
 
-from capture import PROBE_REQUEST_FILTER
-
+PROBE_REQUEST_FILTER = "type mgt subtype probe-req"
 SOURCE_ADDRESS = re.compile(r"\bSA:((?:[0-9a-f]{2}:){5}[0-9a-f]{2})\b", re.I)
 
 

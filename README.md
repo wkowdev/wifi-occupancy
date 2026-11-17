@@ -7,10 +7,7 @@ python3 src/analyze.py
 ```
 
 Put saved Wi-Fi `.pcap` or `.pcapng` files directly in this checkout's `data/`
-directory and pick a file by number. You can also choose `c` to record probe
-requests on a Wi-Fi interface, save the capture to `data/`, and analyze it
-immediately. Live recording requires a monitor-mode-capable adapter and packet
-capture permissions. Use `tcpdump -D` to list interfaces.
+directory. Pick a file by number to analyze it, or enter `q` to quit.
 
 The result is the number of unique source MAC addresses in Wi-Fi probe requests.
 MAC randomization can make one device appear under multiple addresses, and

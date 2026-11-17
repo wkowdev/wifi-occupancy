@@ -1,5 +1,4 @@
 /docs/**/*.pdf
 /data/*.[pP][cC][aA][pP][nN][gG]
 /data/*.[pP][cC][aA][pP]
-/data/wifi-*.tmp
 __pycache__/
