@@ -34,10 +34,10 @@ def choose_captures() -> tuple[list[Path], bool]:
         print("Choose a listed number, a, or q." if captures else "Enter q to quit.")
 
 
-def print_results_table(results: list[tuple[str, str, str]]) -> None:
+def print_results_table(results: list[tuple[str, str, str, str]]) -> None:
     rows = [
         ("Capture", "Unique probe MACs", "Baseline device estimate", "OPTICS device estimate"),
-        *((name, macs, devices, "-") for name, macs, devices in results),
+        *results,
     ]
     widths = [max(map(len, column)) for column in zip(*rows)]
     for row in rows:
@@ -56,14 +56,15 @@ def main() -> int:
                 print(f"Analyze {path.name}: {error}", file=sys.stderr)
                 exit_code = 1
                 if show_table:
-                    results.append((path.name, "error", "error"))
+                    results.append((path.name, "error", "error", "error"))
             else:
                 if show_table:
                     results.append((path.name, str(counts.unique_probe_macs),
-                                    str(counts.baseline_devices)))
+                                    str(counts.baseline_devices), str(counts.optics_devices)))
                 else:
                     print(f"{path.name}: {counts.unique_probe_macs} unique probe-request "
-                          f"source addresses, {counts.baseline_devices} estimated devices (baseline)")
+                          f"source addresses, {counts.baseline_devices} estimated devices (baseline), "
+                          f"{counts.optics_devices} estimated devices (OPTICS)")
         if show_table:
             print()
             print_results_table(results)
