@@ -1,1 +1,3 @@
 /docs/**/*.pdf
+/data/*.pcapng
+/data/*.pcap
