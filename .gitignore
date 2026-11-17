@@ -1,3 +1,4 @@
 /docs/**/*.pdf
-/data/*.pcapng
-/data/*.pcap
+/data/*.[pP][cC][aA][pP][nN][gG]
+/data/*.[pP][cC][aA][pP]
+__pycache__/
