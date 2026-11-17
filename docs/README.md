@@ -28,3 +28,26 @@ signal thresholds are initial heuristics. Similar devices can look alike, and
 a device may keep multiple addresses if its probes differ between them.
 Devices that send no probes are absent. The bundled recordings have no
 headcount labels for calibrating or evaluating a people estimate.
+
+## OPTICS device estimate
+
+The analyzer groups each address's probes by their information elements and
+keeps the timestamps, signal readings, and distinct directed SSIDs. Appendix B
+of Simončič et al. describes the distance between profiles. It compares
+supported rates, capability bits, vendor and extension tags, shared SSIDs,
+and the closest combination of timestamps and signal readings. A missing RSSI
+contributes no signal penalty. Profiles with no shared information element
+cannot support a match. The address distance averages the closest third of
+profile pairs, rounding the number of pairs up.
+
+Following §4.3.2, scikit-learn's OPTICS processes the distances separately for
+each local prefix recognized by TShark and for the remaining randomized
+addresses. The analyzer extracts clusters from the reachability order using
+the rise and drop rules in Appendix B. Each unclustered address remains a
+singleton candidate.
+
+Following §4.3.3, a global address and a randomized cluster count as one device
+if each is the other's closest candidate, their distance is below 200, and each
+runner-up is more than 1.25 times as far away. A candidate with no runner-up
+passes the margin check. The distance weights and thresholds come from the
+[authors' reference implementation](https://gitlab.com/e62Lab/resiloc_project/wireless-data-analysis/-/blob/main/mac_de_anony.py).

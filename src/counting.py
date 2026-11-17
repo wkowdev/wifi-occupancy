@@ -1,24 +1,23 @@
 """Estimate the number of Wi-Fi devices observed in a saved capture."""
 
-import csv
+import json
 import subprocess
 from bisect import bisect_right
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryFile
 
-PROBE_FIELDS = (
-    "wlan.sa",
-    "frame.time_epoch",
-    "radiotap.channel.freq",
-    "radiotap.dbm_antsignal",
-    "wlan.supported_rates",
-    "wlan.extended_supported_rates",
-    "wlan.ht.capabilities",
-    "wlan.vht.mcsset.rxmcsmap",
-    "wlan.tag.number",
-    "wlan.ext_tag.number",
+from optics_counting import AddressProbes, estimate_optics_devices
+
+BASELINE_IE_FIELDS = (
+    "wlan_wlan_supported_rates",
+    "wlan_wlan_extended_supported_rates",
+    "wlan_wlan_ht_capabilities",
+    "wlan_wlan_vht_mcsset_rxmcsmap",
+    "wlan_wlan_tag_number",
+    "wlan_wlan_ext_tag_number",
 )
 
 # Starting values for the baseline heuristic. See docs/README.md.
@@ -30,6 +29,7 @@ MAX_SIGNAL_DIFFERENCE_DB = 5
 class CaptureCounts:
     unique_probe_macs: int
     baseline_devices: int
+    optics_devices: int
 
 
 @dataclass(frozen=True)
@@ -46,14 +46,27 @@ class AddressSpan:
     last: Probe
 
 
-def read_probe_spans(capture_path: Path) -> dict[str, AddressSpan]:
+def field_values(layer: dict, name: str) -> list[str]:
+    value = layer.get(name, [])
+    return value if isinstance(value, list) else [value]
+
+
+def epoch_seconds(value: str) -> float:
+    if not value.endswith("Z"):
+        return float(value)
+    # EK formats absolute times as UTC ISO 8601 with up to nanosecond precision.
+    seconds, _, fraction = value[:-1].partition(".")
+    return datetime.fromisoformat(seconds + "+00:00").timestamp() + float("0." + fraction)
+
+
+def read_probe_spans(
+    capture_path: Path, optics_probes: dict[str, AddressProbes] | None = None
+) -> dict[str, AddressSpan]:
     command = [
         "tshark", "-n", "-r", str(capture_path),
         "-Y", "wlan.fc.type_subtype == 0x04",
-        "-T", "fields", "-E", "occurrence=a",
+        "-T", "ek", "-x", "-J", "frame radiotap wlan wlan.mgt wlan_radio",
     ]
-    for field in PROBE_FIELDS:
-        command.extend(("-e", field))
 
     spans: dict[str, AddressSpan] = {}
     with TemporaryFile(mode="w+t") as errors:
@@ -65,14 +78,36 @@ def read_probe_spans(capture_path: Path) -> dict[str, AddressSpan]:
             raise RuntimeError("TShark was not found on PATH. See README.md for setup.") from error
 
         with decoder:
-            probes = csv.reader(decoder.stdout, delimiter="\t", quoting=csv.QUOTE_NONE)
-            for address, time, frequency, signals, *fingerprint in probes:
-                if not address:
+            for line in decoder.stdout:
+                layers = json.loads(line).get("layers")
+                if not layers:  # EK also emits an index line for each packet.
                     continue
+                wlan = layers.get("wlan", {})
+                addresses = field_values(wlan, "wlan_wlan_sa")
+                if not addresses:
+                    continue
+                address = addresses[0]
+                timestamp = epoch_seconds(layers["frame"]["frame_frame_time_epoch"])
+                management = layers.get("wlan_wlan_mgt", {})
+                radiotap = layers.get("radiotap", {})
+                frequency = ",".join(field_values(radiotap, "radiotap_radiotap_channel_freq"))
                 # Some frames report multiple antennas. Compare the first reading.
-                signal = signals.partition(",")[0]
-                probe = Probe(float(time), frequency, int(signal) if signal else None,
-                              tuple(fingerprint))
+                signals = field_values(radiotap, "radiotap_radiotap_dbm_antsignal")
+                rssi = int(signals[0]) if signals else None
+                fingerprint = tuple(",".join(field_values(management, name))
+                                    for name in BASELINE_IE_FIELDS)
+                if optics_probes is not None:
+                    data = optics_probes.get(address)
+                    if data is None:
+                        vendor = wlan.get("wlan_wlan_sa_oui_resolved")
+                        data = AddressProbes(cid=address[:8] if vendor else None)
+                        optics_probes[address] = data
+                    radio = layers.get("wlan_radio", {})
+                    radio_signals = field_values(radio, "wlan_radio_wlan_radio_signal_dbm")
+                    optics_rssi = int(radio_signals[0]) if rssi is None and radio_signals else rssi
+                    data.add(field_values(management, "wlan_wlan_tag_raw"), timestamp, optics_rssi)
+
+                probe = Probe(timestamp, frequency, rssi, fingerprint)
                 span = spans.get(address)
                 if span is None:
                     spans[address] = AddressSpan(probe, probe)
@@ -127,5 +162,7 @@ def estimate_devices(spans: dict[str, AddressSpan]) -> int:
 
 
 def count_capture(capture_path: Path) -> CaptureCounts:
-    spans = read_probe_spans(capture_path)
-    return CaptureCounts(len(spans), estimate_devices(spans))
+    optics_probes: dict[str, AddressProbes] = {}
+    spans = read_probe_spans(capture_path, optics_probes)
+    return CaptureCounts(len(spans), estimate_devices(spans),
+                         estimate_optics_devices(optics_probes))
