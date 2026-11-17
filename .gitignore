@@ -2,3 +2,4 @@
 /data/*.[pP][cC][aA][pP][nN][gG]
 /data/*.[pP][cC][aA][pP]
 __pycache__/
+/.venv/

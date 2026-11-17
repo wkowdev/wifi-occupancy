@@ -62,7 +62,7 @@ def read_probe_spans(capture_path: Path) -> dict[str, AddressSpan]:
                 command, stdout=subprocess.PIPE, stderr=errors, text=True, errors="replace"
             )
         except FileNotFoundError as error:
-            raise RuntimeError("TShark is required. Install it and add tshark to your PATH.") from error
+            raise RuntimeError("TShark was not found on PATH. See README.md for setup.") from error
 
         with decoder:
             probes = csv.reader(decoder.stdout, delimiter="\t", quoting=csv.QUOTE_NONE)
