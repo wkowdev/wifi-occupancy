@@ -1,10 +1,10 @@
-"""Choose Wi-Fi captures and run the probe-source count."""
+"""Choose Wi-Fi captures and show device counts."""
 
 import sys
 from pathlib import Path
 
 from capture import DATA_DIR, list_captures
-from counting import count_probe_sources
+from counting import count_capture
 
 
 def choose_captures() -> tuple[list[Path], bool]:
@@ -34,10 +34,10 @@ def choose_captures() -> tuple[list[Path], bool]:
         print("Choose a listed number, a, or q." if captures else "Enter q to quit.")
 
 
-def print_results_table(results: list[tuple[str, str]]) -> None:
+def print_results_table(results: list[tuple[str, str, str]]) -> None:
     rows = [
-        ("name", "num_of_uniq_probe_req", "placeholder default alg", "placeholder ext alg"),
-        *((name, count, "-", "-") for name, count in results),
+        ("Capture", "Unique probe MACs", "Baseline device estimate", "OPTICS device estimate"),
+        *((name, macs, devices, "-") for name, macs, devices in results),
     ]
     widths = [max(map(len, column)) for column in zip(*rows)]
     for row in rows:
@@ -51,17 +51,19 @@ def main() -> int:
         results = []
         for path in captures:
             try:
-                count = count_probe_sources(path)
+                counts = count_capture(path)
             except (OSError, RuntimeError) as error:
                 print(f"Analyze {path.name}: {error}", file=sys.stderr)
                 exit_code = 1
                 if show_table:
-                    results.append((path.name, "error"))
+                    results.append((path.name, "error", "error"))
             else:
                 if show_table:
-                    results.append((path.name, str(count)))
+                    results.append((path.name, str(counts.unique_probe_macs),
+                                    str(counts.baseline_devices)))
                 else:
-                    print(f"{path.name}: {count} unique probe-request source addresses")
+                    print(f"{path.name}: {counts.unique_probe_macs} unique probe-request "
+                          f"source addresses, {counts.baseline_devices} estimated devices (baseline)")
         if show_table:
             print()
             print_results_table(results)
