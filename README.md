@@ -1,6 +1,29 @@
 # Wi-Fi occupancy
 
-Run the terminal chooser with Python 3.10+ and `tshark` on your PATH.
+## Setup
+
+The analyzer needs Python 3.10+ and TShark on your PATH. It uses only the Python
+standard library, so there are no packages to install with `pip`.
+
+**macOS with [Homebrew](https://brew.sh/)** — from the repository root:
+
+```sh
+brew bundle install --no-upgrade
+```
+
+**Debian or Ubuntu**:
+
+```sh
+sudo apt update
+sudo apt install python3 tshark
+```
+
+If the installer asks whether non-root users should be allowed to capture
+packets, select **No**. The analyzer reads saved captures.
+
+## Run
+
+From the repository root:
 
 ```sh
 python3 src/analyze.py
