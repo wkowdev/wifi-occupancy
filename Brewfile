@@ -1,2 +1,2 @@
-brew "python"
+brew "uv"
 brew "wireshark"

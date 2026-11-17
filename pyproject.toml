@@ -1,0 +1,10 @@
+[project]
+name = "wifi-occupancy"
+version = "0.1.0"
+description = "Estimate Wi-Fi device counts from saved probe request captures"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.uv]
+package = false
