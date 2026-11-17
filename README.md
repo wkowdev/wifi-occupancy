@@ -7,8 +7,9 @@ python3 src/analyze.py
 ```
 
 Put saved Wi-Fi `.pcap` or `.pcapng` files directly in this checkout's `data/`
-directory. Pick a file by number, enter `a` to analyze every capture and print a
-count for each file, or enter `q` to quit.
+directory. Pick a file by number, enter `a` to show a table with one row per
+capture, or enter `q` to quit. The table shows the filename and count, with `-`
+as the placeholder for each algorithm.
 
 The included recordings come from [projekt-SCS](https://github.com/Natalaa212/projekt-SCS/tree/6a325f2e26929588b17e6b91eda0866e903fac6d).
 Filenames starting with `corridor_` come from `dane_korytarz`, and filenames
