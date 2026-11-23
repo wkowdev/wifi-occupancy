@@ -32,6 +32,14 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 If the installer asks whether non-root users should be allowed to capture
 packets, select **No**. The analyzer reads saved captures.
 
+The `data/2,4+5ghz_21.pcap` capture uses [Git LFS](https://git-lfs.com/). To
+download it into an existing checkout, install Git LFS and run:
+
+```sh
+git lfs install
+git lfs pull
+```
+
 ## Run
 
 From the repository root:
@@ -45,7 +53,8 @@ directory. Pick a file by number, enter `a` to show a table with one row per
 capture, or enter `q` to quit. The results show the unique probe MAC count
 and both the baseline and OPTICS device estimates for each capture.
 
-The included recordings come from [projekt-SCS](https://github.com/Natalaa212/projekt-SCS/tree/6a325f2e26929588b17e6b91eda0866e903fac6d).
+The recordings archived in `data/legacy/` come from
+[projekt-SCS](https://github.com/Natalaa212/projekt-SCS/tree/6a325f2e26929588b17e6b91eda0866e903fac6d).
 Filenames starting with `corridor_` come from `dane_korytarz`, and filenames
 starting with `flat_` come from `dane_mieszkanie`.
 
@@ -54,9 +63,6 @@ The [baseline method](docs/README.md#baseline-device-estimate) and the
 timing, and signal strength to estimate the number of Wi-Fi devices observed
 over the whole recording.
 A people count needs separate calibration against known headcounts.
-
-Keep new raw capture files local. Git ignores untracked `.pcap` and `.pcapng` files in
-`data/`.
 
 ## Python dependencies
 
