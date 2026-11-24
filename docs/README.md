@@ -36,7 +36,9 @@ keeps the timestamps, signal readings, and distinct directed SSIDs. Appendix B
 of Simončič et al. describes the distance between profiles. It compares
 supported rates, capability bits, vendor and extension tags, shared SSIDs,
 and the closest combination of timestamps and signal readings. A missing RSSI
-contributes no signal penalty. Profiles with no shared information element
+contributes no signal penalty. Signal readings are compared only within one
+frequency band: in the bundled meeting captures, the same device reads
+12–20 dB weaker at 5 GHz than at 2.4 GHz (median of nearby pairs). Profiles with no shared information element
 cannot support a match. The address distance averages the closest third of
 profile pairs, rounding the number of pairs up.
 
@@ -45,6 +47,12 @@ each local prefix recognized by TShark and for the remaining randomized
 addresses. The analyzer extracts clusters from the reachability order using
 the rise and drop rules in Appendix B. Each unclustered address remains a
 singleton candidate.
+
+A device uses one address at a time, so a cluster counts as many devices as it
+has addresses active at once. An address is active from its first to its last
+probe, shortened by one second at each end. This step is not in the paper.
+OPTICS joins chains of similar addresses, and similar devices can end up in one
+cluster even when their addresses probe at the same time.
 
 Following §4.3.3, a global address and a randomized cluster count as one device
 if each is the other's closest candidate, their distance is below 200, and each

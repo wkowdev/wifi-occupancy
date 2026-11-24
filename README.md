@@ -53,6 +53,11 @@ directory. Pick a file by number, enter `a` to show a table with one row per
 capture, or enter `q` to quit. The results show the unique probe MAC count
 and both the baseline and OPTICS device estimates for each capture.
 
+To treat consecutive recordings of the same place as one session, enter several
+numbers, such as `3-6` or `3,5`. The analyzer then counts devices across all of
+them together. A device can stay silent for many minutes, so a single
+10-minute capture may miss devices that a longer session records.
+
 The recordings archived in `data/legacy/` come from
 [projekt-SCS](https://github.com/Natalaa212/projekt-SCS/tree/6a325f2e26929588b17e6b91eda0866e903fac6d).
 Filenames starting with `corridor_` come from `dane_korytarz`, and filenames

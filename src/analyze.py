@@ -4,10 +4,28 @@ import sys
 from pathlib import Path
 
 from capture import DATA_DIR, list_captures
-from counting import count_capture
+from counting import CaptureCounts, count_captures
+
+SINGLE, TABLE, SESSION = "single", "table", "session"
 
 
-def choose_captures() -> tuple[list[Path], bool]:
+def parse_numbers(choice: str, count: int) -> list[int] | None:
+    """Parse numbers and ranges such as "3", "3-6", or "3,5-6"."""
+    numbers = set()
+    for part in choice.split(","):
+        first, dash, last = part.strip().partition("-")
+        try:
+            start = int(first)
+            end = int(last) if dash else start
+        except ValueError:
+            return None
+        if not 1 <= start <= end <= count:
+            return None
+        numbers.update(range(start, end + 1))
+    return sorted(numbers)
+
+
+def choose_captures() -> tuple[list[Path], str]:
     captures = list_captures(DATA_DIR)
     print(f"Wi-Fi captures in {DATA_DIR}")
     for number, path in enumerate(captures, start=1):
@@ -16,22 +34,28 @@ def choose_captures() -> tuple[list[Path], bool]:
         print("  a. Analyze all captures as a table")
     else:
         print("  No saved captures. Add a .pcap or .pcapng file here.")
+    if len(captures) > 1:
+        print("  Enter several numbers, such as 3-6 or 3,5, to analyze them as one session.")
     print("  q. Quit")
 
     while True:
         choice = input("Selection: ").strip().lower()
         if choice == "q":
-            return [], False
+            return [], SINGLE
         if choice == "a" and captures:
-            return captures, True
+            return captures, TABLE
 
-        try:
-            number = int(choice)
-            if 1 <= number <= len(captures):
-                return [captures[number - 1]], False
-        except ValueError:
-            pass
-        print("Choose a listed number, a, or q." if captures else "Enter q to quit.")
+        numbers = parse_numbers(choice, len(captures))
+        if numbers:
+            selected = [captures[number - 1] for number in numbers]
+            return selected, SINGLE if len(selected) == 1 else SESSION
+        print("Choose listed numbers, a, or q." if captures else "Enter q to quit.")
+
+
+def describe(counts: CaptureCounts) -> str:
+    return (f"{counts.unique_probe_macs} unique probe-request source addresses, "
+            f"{counts.baseline_devices} estimated devices (baseline), "
+            f"{counts.optics_devices} estimated devices (OPTICS)")
 
 
 def print_results_table(results: list[tuple[str, str, str, str]]) -> None:
@@ -47,25 +71,33 @@ def print_results_table(results: list[tuple[str, str, str, str]]) -> None:
 def main() -> int:
     exit_code = 0
     try:
-        captures, show_table = choose_captures()
+        captures, mode = choose_captures()
+        if mode == SESSION:
+            names = ", ".join(path.name for path in captures)
+            try:
+                counts = count_captures(captures)
+            except (OSError, RuntimeError) as error:
+                print(f"Analyze session ({names}): {error}", file=sys.stderr)
+                return 1
+            print(f"Session of {len(captures)} captures ({names}): {describe(counts)}")
+            return 0
+
         results = []
         for path in captures:
             try:
-                counts = count_capture(path)
+                counts = count_captures([path])
             except (OSError, RuntimeError) as error:
                 print(f"Analyze {path.name}: {error}", file=sys.stderr)
                 exit_code = 1
-                if show_table:
+                if mode == TABLE:
                     results.append((path.name, "error", "error", "error"))
             else:
-                if show_table:
+                if mode == TABLE:
                     results.append((path.name, str(counts.unique_probe_macs),
                                     str(counts.baseline_devices), str(counts.optics_devices)))
                 else:
-                    print(f"{path.name}: {counts.unique_probe_macs} unique probe-request "
-                          f"source addresses, {counts.baseline_devices} estimated devices (baseline), "
-                          f"{counts.optics_devices} estimated devices (OPTICS)")
-        if show_table:
+                    print(f"{path.name}: {describe(counts)}")
+        if mode == TABLE:
             print()
             print_results_table(results)
     except EOFError:

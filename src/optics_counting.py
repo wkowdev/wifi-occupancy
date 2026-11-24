@@ -18,6 +18,9 @@ MATCH_MARGIN = 1.25
 RSSI_BASE = 1.055
 TIMING_THRESHOLD_SECONDS = 0.1
 TIMING_DISCOUNT = 10
+# Addresses in one cluster that are active at the same time, beyond this
+# margin at each end of their activity, belong to separate devices.
+OVERLAP_SLACK_SECONDS = 1.0
 
 SSID = 0
 SUPPORTED_RATES = 1
@@ -34,7 +37,8 @@ CAPABILITY_WEIGHTS = {
 DISTANCE_TAGS = {SUPPORTED_RATES, EXTENDED_RATES, VENDOR_SPECIFIC, EXTENSION,
                  *CAPABILITY_WEIGHTS}
 
-Observation = tuple[float, int | None]
+# Arrival time, signal strength in dBm, and frequency band in GHz.
+Observation = tuple[float, int | None, int | None]
 TagProfile = tuple[bytes, ...]
 
 
@@ -44,7 +48,8 @@ class AddressProbes:
     profiles: dict[TagProfile, list[Observation]] = field(default_factory=dict)
     ssids: set[bytes] = field(default_factory=set)
 
-    def add(self, raw_tags: list[str], time: float, signal: int | None) -> None:
+    def add(self, raw_tags: list[str], time: float, signal: int | None,
+            band: int | None) -> None:
         tags = set()
         for raw_tag in raw_tags:
             tag = bytes.fromhex(raw_tag)
@@ -54,12 +59,16 @@ class AddressProbes:
                 self.ssids.add(tag[2:])
             elif tag[0] in DISTANCE_TAGS:
                 tags.add(tag)
-        self.profiles.setdefault(tuple(sorted(tags)), []).append((time, signal))
+        self.profiles.setdefault(tuple(sorted(tags)), []).append((time, signal, band))
 
     def merge(self, other: "AddressProbes") -> None:
         self.ssids.update(other.ssids)
         for profile, observations in other.profiles.items():
             self.profiles.setdefault(profile, []).extend(observations)
+
+    def time_span(self) -> tuple[float, float]:
+        times = [time for observations in self.profiles.values() for time, _, _ in observations]
+        return min(times), max(times)
 
 
 def split_elements(profile: TagProfile) -> dict:
@@ -121,10 +130,12 @@ def information_distance(left: dict, right: dict) -> float:
 
 def observation_distance(left: list[Observation], right: list[Observation]) -> float:
     best = inf
-    for time_a, signal_a in left:
-        for time_b, signal_b in right:
+    for time_a, signal_a, band_a in left:
+        for time_b, signal_b, band_b in right:
             distance = 0.0
-            if signal_a is not None and signal_b is not None:
+            # The receiver reports different signal levels in each band, so
+            # only readings from the same band are compared.
+            if signal_a is not None and signal_b is not None and band_a == band_b:
                 distance = RSSI_BASE ** abs(signal_a - signal_b) - 1
             if abs(time_a - time_b) < TIMING_THRESHOLD_SECONDS:
                 distance -= TIMING_DISCOUNT
@@ -185,9 +196,26 @@ def reachability_labels(reachability: np.ndarray) -> list[int]:
     return labels
 
 
-def cluster_random_addresses(addresses: list[AddressProbes]) -> list[AddressProbes]:
+def concurrent_addresses(addresses: list[AddressProbes]) -> int:
+    """Return the most addresses active at once. A device uses one address at a time."""
+    changes = []
+    for address in addresses:
+        start, end = address.time_span()
+        start += OVERLAP_SLACK_SECONDS
+        end -= OVERLAP_SLACK_SECONDS
+        if start < end:
+            changes += [(start, 1), (end, -1)]
+    active = most = 0
+    for _, change in sorted(changes):  # At equal times, an end sorts before a start.
+        active += change
+        most = max(most, active)
+    return max(1, most)
+
+
+def cluster_random_addresses(addresses: list[AddressProbes]) -> list[tuple[AddressProbes, int]]:
+    """Return each candidate with the number of devices it represents."""
     if len(addresses) < 2:
-        return addresses
+        return [(address, 1) for address in addresses]
     distances = np.zeros((len(addresses), len(addresses)))
     has_neighbors = False
     for first, second in combinations(range(len(addresses)), 2):
@@ -197,18 +225,25 @@ def cluster_random_addresses(addresses: list[AddressProbes]) -> list[AddressProb
         # sklearn requires finite inputs. Distances above max_eps are unreachable.
         distances[first, second] = distances[second, first] = min(distance, MAX_DISTANCE + 1)
     if not has_neighbors:
-        return addresses
+        return [(address, 1) for address in addresses]
 
     model = OPTICS(min_samples=2, max_eps=MAX_DISTANCE, metric="precomputed").fit(distances)
     labels = reachability_labels(model.reachability_[model.ordering_])
-    clusters: dict[int, AddressProbes] = {}
+    members: dict[int, list[AddressProbes]] = {}
     singletons = []
     for index, label in zip(model.ordering_, labels):
         if label == -1:
-            singletons.append(addresses[index])
+            singletons.append((addresses[index], 1))
         else:
-            clusters.setdefault(label, AddressProbes()).merge(addresses[index])
-    return singletons + list(clusters.values())
+            members.setdefault(label, []).append(addresses[index])
+
+    clusters = []
+    for cluster_members in members.values():
+        merged = AddressProbes()
+        for address in cluster_members:
+            merged.merge(address)
+        clusters.append((merged, concurrent_addresses(cluster_members)))
+    return singletons + clusters
 
 
 def best_match(distances: np.ndarray) -> int | None:
@@ -234,9 +269,11 @@ def estimate_optics_devices(probes: dict[str, AddressProbes]) -> int:
         else:
             non_unicast_count += 1
 
-    random_clusters = [cluster for group in random_groups.values()
-                       for cluster in cluster_random_addresses(group)]
-    total = len(global_addresses) + len(random_clusters) + non_unicast_count
+    candidates = [candidate for group in random_groups.values()
+                  for candidate in cluster_random_addresses(group)]
+    random_clusters = [cluster for cluster, _ in candidates]
+    total = (len(global_addresses) + sum(devices for _, devices in candidates)
+             + non_unicast_count)
     if not global_addresses or not random_clusters:
         return total
 

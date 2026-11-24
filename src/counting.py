@@ -59,16 +59,28 @@ def epoch_seconds(value: str) -> float:
     return datetime.fromisoformat(seconds + "+00:00").timestamp() + float("0." + fraction)
 
 
+def frequency_band(frequency: str) -> int | None:
+    """Return the band in GHz (2, 5, or 6) of a channel frequency in MHz."""
+    if not frequency:
+        return None
+    megahertz = int(frequency.split(",")[0])
+    return 2 if megahertz < 3000 else 5 if megahertz < 5925 else 6
+
+
 def read_probe_spans(
-    capture_path: Path, optics_probes: dict[str, AddressProbes] | None = None
+    capture_path: Path,
+    optics_probes: dict[str, AddressProbes] | None = None,
+    spans: dict[str, AddressSpan] | None = None,
 ) -> dict[str, AddressSpan]:
+    """Read probe requests, adding them to `spans` and `optics_probes` when given."""
     command = [
         "tshark", "-n", "-r", str(capture_path),
         "-Y", "wlan.fc.type_subtype == 0x04",
         "-T", "ek", "-x", "-J", "frame radiotap wlan wlan.mgt wlan_radio",
     ]
 
-    spans: dict[str, AddressSpan] = {}
+    if spans is None:
+        spans = {}
     with TemporaryFile(mode="w+t") as errors:
         try:
             decoder = subprocess.Popen(
@@ -105,7 +117,8 @@ def read_probe_spans(
                     radio = layers.get("wlan_radio", {})
                     radio_signals = field_values(radio, "wlan_radio_wlan_radio_signal_dbm")
                     optics_rssi = int(radio_signals[0]) if rssi is None and radio_signals else rssi
-                    data.add(field_values(management, "wlan_wlan_tag_raw"), timestamp, optics_rssi)
+                    data.add(field_values(management, "wlan_wlan_tag_raw"), timestamp, optics_rssi,
+                             frequency_band(frequency))
 
                 probe = Probe(timestamp, frequency, rssi, fingerprint)
                 span = spans.get(address)
@@ -161,8 +174,11 @@ def estimate_devices(spans: dict[str, AddressSpan]) -> int:
     return len(spans) - links
 
 
-def count_capture(capture_path: Path) -> CaptureCounts:
+def count_captures(capture_paths: list[Path]) -> CaptureCounts:
+    """Count devices over one or more captures recorded as a single session."""
     optics_probes: dict[str, AddressProbes] = {}
-    spans = read_probe_spans(capture_path, optics_probes)
+    spans: dict[str, AddressSpan] = {}
+    for capture_path in capture_paths:
+        read_probe_spans(capture_path, optics_probes, spans)
     return CaptureCounts(len(spans), estimate_devices(spans),
                          estimate_optics_devices(optics_probes))
